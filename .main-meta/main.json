@@ -37,14 +37,6 @@
             }
         },
         "author": "Teodor-Emilian Petre",
-        "subcategories": [
-            [
-                "Peripherals", "GPIO"
-            ],
-            [
-                "Peripherals", "USART"
-            ]
-        ],
         "peripherals": [
             "GPIO"
         ],
