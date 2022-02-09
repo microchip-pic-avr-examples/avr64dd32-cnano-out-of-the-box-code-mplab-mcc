@@ -4,8 +4,8 @@
     "content": {
         "metaDataVersion": "1.3.0",
         "name": "com.microchip.mcu8.mplabx.project.avr64dd32-cnano-out-of-the-box-code-mplab-mcc",
-        "version": " ",
-        "displayName": "",
+        "version": "1.0.0",
+        "displayName": "Curiosity Nano Out-of-the-Box Code",
         "projectName": "avr64dd32-cnano-out-of-the-box-code-mplab-mcc",
         "shortDescription": "This repository contains a project that comes preloaded on the AVR64DD32 Curiosity Nano board when the user first plugs it in It consists of three programs and a command line that enables choosing between those programs",
         "ide": {
@@ -19,12 +19,12 @@
             }
         ],
         "dfp": {
-            "name": "",
-            "semverRange": ""
+            "name": "AVR-Dx_DFP",
+            "semverRange": "^1.10.124"
         },
         "configurator": {
-            "name": "",
-            "semverRange": ""
+            "name": "MCC",
+            "semverRange": ">=5.0.3"
         },
         "device": {
             "metaDataVersion": "1.0.0",
@@ -36,9 +36,23 @@
                 "versionRange": "*"
             }
         },
-        "author": "Alexandru - Ioan - Cristian Sabiuta",
-        "peripherals": [],
-        "keywords": [],
+        "author": "Teodor-Emilian Petre",
+        "subcategories": [
+            [
+                "Peripherals", "GPIO"
+            ],
+            [
+                "Peripherals", "USART"
+            ]
+        ],
+        "peripherals": [
+            "GPIO"
+        ],
+        "keywords": [
+            "Getting Started",
+            "Serial Communication",
+            "GPIO"
+        ],
         "additionalData": {
             "longDescription": {
                 "metaDataVersion": "1.0.0",
