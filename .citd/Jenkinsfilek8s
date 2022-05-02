@@ -1,5 +1,5 @@
 // Jenkinsfile v2.0.0
-
+import org.jenkinsci.plugins.pipeline.modeldefinition.Utils
 pipeline {
     agent {
         kubernetes {
@@ -20,6 +20,8 @@ pipeline {
 		BITBUCKET_URL = 'https://bitbucket.microchip.com/scm/ebe/avr64dd32-cnano-out-of-the-box-code-mplab-mcc.git'
 		SEMVER_REGEX = '^(0|[1-9]\\d*)+\\.(0|[1-9]\\d*)+\\.(0|[1-9]\\d*)+$'
 		ARTIFACTORY_SERVER = 'https://artifacts.microchip.com:7999/artifactory'
+		RUN_METADATA_STAGE = false
+		DEPLOY_TO_PORTAL_AND_GITHUB = false
 	}	
 	options {
 		timestamps()
@@ -27,14 +29,168 @@ pipeline {
 	}
 
 	stages {
-		stage('setup') {
-		    steps {
-				script {
-					execute("git clone https://bitbucket.microchip.com/scm/citd/mpae-buildpipeline-groovy-scripts.git")
-					def buildPipeline = load ('mpae-buildpipeline-groovy-scripts/xc8mplabx-buildpipeline.groovy')
-					buildPipeline.runStages()
+		stage('pre-requisite'){
+			steps{
+				script{
+					//def tool_version = readProperties  file: './mpae-buildpipeline-groovy-scripts/tool.properties'
+					createEmailList()
+					def jsonObj = readJSON file:".main-meta/main.json"
+					def repoName, prNum, bitbucketSlug, jobName, blueOceanURL
+					def version = "${jsonObj.content.version}".trim()
+					if(version != "" || env.TAG_NAME){
+						def branchPattern = ~/.*feature.*/
+						def isFeatureBranch = (env.CHANGE_BRANCH ==~ branchPattern) || (env.BRANCH_NAME ==~ branchPattern)
+						repoName = env.GIT_URL.replaceFirst(/^.*\/([^\/]+?).git$/, '$1')
+						prNum = env.BRANCH_NAME.replace('PR-', '')
+						bitbucketSlug = env.GIT_URL.tokenize('/')[3]
+						jobName = env.JOB_NAME.replace(' ','%20').replace("/${env.BRANCH_NAME}",'').replace('/','%2F')
+						blueOceanURL = "https://ci.devops.microchip.com/mcu8/blue/organizations/jenkins/" 
+						if(env.CHANGE_TARGET == "master"){
+							RUN_METADATA_STAGE = true
+						}
+						else if(env.CHANGE_TARGET == "develop"){
+							RUN_METADATA_STAGE = true
+						}
+						else{
+							RUN_METADATA_STAGE = false
+						}
+					}
+					if(env.TAG_NAME =~ env.SEMVER_REGEX){
+						DEPLOY_TO_PORTAL_AND_GITHUB = true 
+					}
+					if(version == env.TAG_NAME){
+						execute("echo 'Tag name is not equal to metadata content version.' && exit 1")
+					}
+					println "RUN_METADATA_STAGE: $RUN_METADATA_STAGE"
+					println "DEPLOY_TO_PORTAL_AND_GITHUB: $DEPLOY_TO_PORTAL_AND_GITHUB"
 				}
-            }
+			}
+		}
+		stage('metadata-validation'){
+			when{
+				expression{
+					RUN_METADATA_STAGE == true
+				}
+			}
+			parallel{
+				stage("CITD_tool"){
+					steps{
+						script{
+							def jsonObj = readJSON file:".main-meta/main.json"
+							download("metadata-schema","4.0.0")
+							download("tool-metadata-validator","2.1.0")										
+							def exitCode = sh(script: "cd tool-metadata-validator && python metadata-validator.py -data ../.main-meta/main.json -schema ../metadata-schema/main-schema.json", returnStatus: true)
+							if(exitCode == 43 ){
+								println "Keywords or peripherals used in metadata not from list of approved keywords"
+								def url = "https://bitbucket.microchip.com/rest/api/1.0/projects/${bitbucketSlug}/repos/${repoName}/pull-requests/${prNum}/comments/"
+								blueOceanURL = blueOceanURL+"${jobName}/detail/${env.BRANCH_NAME}/${env.BUILD_NUMBER}/pipeline"
+								def data = """{"text":"Keywords or peripherals used in metadata not from list of approved keywords, find the violated keywords in metadata stage: ${blueOceanURL}, if they are neccessary please ask admin to check this task","severity":"BLOCKER"}"""
+								withCredentials([usernamePassword(credentialsId: 'Bitbucket_Admin_Access_For_8bit_Examples', usernameVariable: 'USER_NAME', passwordVariable:'USER_PASS' )]) {					
+									sh "curl -u ${USER_NAME}:${USER_PASS} -H 'Content-Type: application/json' -X POST ${url} -d '${data}'"
+								}
+							}
+							else if(exitCode == 1){
+								error("Metadata does not follow schema, please follow schema defined in https://confluence.microchip.com/display/MCA/QA_Doc+-+Metadata+Schema+3.0.0#QA_DocMetadataSchema3.0.0-Stepstomanuallymigratetometadataschema(v1.3.0)")
+							}
+
+							def githubObj = getGiHubInfo()
+
+							if(githubObj.repoName != jsonObj.content.projectName) {
+								execute("echo 'Project name in metadata file does not match with GitHub repository name.' && exit 1")						
+							}
+							
+							if(DEPLOY_TO_PORTAL_AND_GITHUB == true) {
+								if(env.TAG_NAME != jsonObj.content.version) {
+									execute("echo 'Version in metadata file does not match with TAG_NAME.' && exit 1") 
+								}
+							}
+						}
+					}
+				}
+				stage("portal_CLI"){
+					steps{
+						script{
+							def cmdArgs = "../.main-meta/main.json"				
+							execute("git clone --depth=1 https://bitbucket.microchip.com/scm/portal/bundles.git")	
+							execute("cd bundles && chmod 755 ./portal-client-cli-linux")
+							download("tool-portal-client-launcher","1.3.0")
+							execute("cd tool-portal-client-launcher && node portalLauncher.js -app=../bundles/portal-client-cli-linux -cmd=\"verifyMetadata ${cmdArgs}\"")
+						}
+					}
+				}
+			}
+		}	
+		stage('pre-build'){
+			steps{
+				script{
+					MPLABX_PATH= sh (script: 'update-alternatives --list MPLABX_PATH',returnStdout: true).trim()
+					COMPILER_PATH= sh (script: 'update-alternatives --list XC8_PATH',returnStdout: true).trim()										
+					def pDir = "${MPLABX_PATH}/packs"				
+					def ver = COMPILER_PATH.split('/')[4].substring(1)		
+					download("tool-mplabx-c-project-generator","1.1.1")					
+					execute("cd tool-mplabx-c-project-generator && node configGenerator.js sp=../ v8=${ver} packs=${pDir} dm=true")
+				}
+			}
+				
+		}
+		
+		stage('build') {
+			steps{
+				script{
+					download("tool-mplabx-c-build","1.0.0")								
+					execute("cd tool-mplabx-c-build && node buildLauncher.js sp=../ rp=./output genMK=true dm=true")
+				}
+			}
+		}
+		
+		stage('github-deploy') {
+			when{
+				expression{
+					DEPLOY_TO_PORTAL_AND_GITHUB == true
+				}				
+			}
+			steps{
+				script{
+					def githubObj = getGiHubInfo()					
+					download("tool-github-deploy","1.4.0")		
+					execute("chmod +x ./tool-github-deploy/tool-github-deploy/tool-github-deploy.py")  
+							
+					withCredentials([usernamePassword(credentialsId: '8bit-examples.github.com', usernameVariable: 'USER_NAME', passwordVariable:'USER_PASS' )]) {					
+						execute("python ./tool-github-deploy/tool-github-deploy/tool-github-deploy.py -deploy=true -gpat=${USER_PASS} -dgid=${USER_NAME} -dburl=${env.BITBUCKET_URL} -dgurl=${env.GITHUB_URL} -dtag=${env.TAG_NAME} -dmfd=true -digmc=true")	
+						execute("cd ./C-Nano-Out-of-the-Box.X/dist/pro/production && mv C-Nano-Out-of-the-Box.X.production.hex C-Nano-Out-of-the-Box-${env.TAG_NAME}.hex")
+						execute("python ./tool-github-deploy/tool-github-deploy/tool-github-deploy.py -rlo=true -gpat=${USER_PASS}  -rpn=${githubObj.repoName} -rltv=${env.TAG_NAME} -rltt=${env.TAG_NAME} -rlua=./C-Nano-Out-of-the-Box.X/dist/pro/production/C-Nano-Out-of-the-Box-${env.TAG_NAME}.hex")	
+					}
+					sendSuccessfulGithubDeploymentEmail()
+				}
+			}			
+		}
+		
+		stage('portal-deploy') {
+			when{
+				expression{
+					DEPLOY_TO_PORTAL_AND_GITHUB == true
+				}
+			}
+			steps{
+				script{
+					def metadata = readJSON file:".main-meta/main.json"					
+					def version = metadata.content.version
+					def project = metadata.content.projectName
+
+					if(version == env.TAG_NAME) {				
+						def cmdArgs = "'{\"repoOwnerName\":\"$env.GITHUB_OWNER\",\"repoName\":\"$project\",\"tagName\":\"$version\"}'"
+						cmdArgs = cmdArgs.replaceAll("\"","\\\\\"")						
+					
+						execute("git clone --depth=1 https://bitbucket.microchip.com/scm/portal/bundles.git")
+						execute("cd bundles && chmod 755 ./portal-client-cli-linux")						
+						download("tool-portal-client-launcher","1.3.0")
+						execute("cd tool-portal-client-launcher && node portalLauncher.js -app=../bundles/portal-client-cli-linux -cmd=\"uploadGitHub ${cmdArgs}\"")
+						sendSuccessfulPortalDeploymentEmail()
+					} else {
+						execute("echo 'Tag name is not equal to metadata content version.' && exit 1")
+					}
+				}
+			}
 		}
 	}
 	
@@ -57,4 +213,78 @@ def sendPipelineFailureEmail() {
     mail to: "${env.EMAILLIST},${params.NOTIFICATION_EMAIL}",
     subject: "Failed Pipeline: ${currentBuild.fullDisplayName}",
     body: "Pipeline failure. ${env.BUILD_URL}"
+}
+
+def download(String toolName,String toolVersion) {
+	def repo = "ivy/citd"
+	def url = "${env.ARTIFACTORY_SERVER}/${repo}/${toolName}/${toolVersion}/${toolName}-${toolVersion}.zip"
+	def response =sh(script:"curl ${url} -o ${toolName}.zip",returnStdout: true).trim()
+	unzip dir:"${toolName}", quiet: true, zipFile: "${toolName}.zip"	
+	execute("rm -rf ${toolName}.zip")
+}
+
+def getGiHubInfo() {
+	def githubObj = [
+		'ownerName':'',
+		'repoName':''
+		]
+	String[] splitURLString = "${env.GITHUB_URL}".split("/")
+	githubObj.repoName = splitURLString[splitURLString.size()-1]
+	githubObj.repoName = githubObj.repoName.replace(".git","")
+	githubObj.ownerName = splitURLString[splitURLString.size()-2]
+	return githubObj
+}
+
+def deployReport(String src) {
+	def source = src	
+	def files = findFiles glob: "${source}" 
+	if( files.length > 0 ) {
+		//def repository = 'mcu8-bin/8bit-Example'	
+		def repository = 'citd/report'
+		def slug = GIT_URL.tokenize('/')[4]
+		slug = slug.substring(0, slug.lastIndexOf('.')) //Remove .git
+		def sourceZipFile = "${slug}-${env.BRANCH_NAME}.${env.BUILD_NUMBER}.zip"
+		def targetZipFile = "${env.ARTIFACTORY_SERVER}/${repository}/${slug}/${env.BRANCH_NAME}/${slug}-${env.BRANCH_NAME}.${env.BUILD_NUMBER}.zip"
+		zip archive: false, glob: "${source}",zipFile: "${sourceZipFile}"
+		execute("curl -T ${sourceZipFile} ${targetZipFile}")	
+		execute("rm -rf ${sourceZipFile}")
+		sendReportEmail(targetZipFile)
+	}
+}
+
+def createEmailList(){
+    execute("python3 -m pip install jira")
+	//def tool_version = readProperties  file: './mpae-buildpipeline-groovy-scripts/tool.properties'
+	download("tool-get-email-address","1.2.0")
+	withCredentials([usernamePassword(credentialsId: 'Jira acess Credentials', usernameVariable: 'JiraID', passwordVariable:'JiraPassword' )]) {					
+		execute("cd tool-get-email-address && python3 emailAddressFromJira.py -id ${JiraID} -tkn ${JiraPassword}")
+	}
+	env.JIRAEMAIL = readFile('email.txt')
+	if(!"${env.CHANGE_AUTHOR_EMAIL}".equalsIgnoreCase("null")) {
+		env.EMAILLIST = env.CHANGE_AUTHOR_EMAIL
+	}else if (env.JIRAEMAIL?.trim()) {
+        env.EMAILLIST = env.JIRAEMAIL
+    }else{
+		env.EMAILLIST = params.NOTIFICATION_EMAIL
+	}
+	execute("echo ${env.EMAILLIST}")
+
+}
+
+def sendReportEmail(String reportFile) {
+    mail to: "${env.EMAILLIST}",
+    subject: "Report: ${currentBuild.fullDisplayName}",
+    body: "Report: ${reportFile}"
+}
+
+def sendSuccessfulGithubDeploymentEmail() {
+    emailext( to: "${env.EMAILLIST}",
+    subject: "Successful Github Deployment: ${currentBuild.fullDisplayName}",
+    body: "The changes have been successfully deployed to GitHub. ${env.GITHUB_URL}")
+}
+
+def sendSuccessfulPortalDeploymentEmail() {
+    emailext( to: "${env.EMAILLIST}",
+    subject: "Successful Portal Deployment: ${currentBuild.fullDisplayName}",
+    body: "The changes have been successfully deployed to Discover Portal.")
 }
