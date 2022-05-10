@@ -32,12 +32,11 @@ pipeline {
 		stage('pre-requisite'){
 			steps{
 				script{
-					//def tool_version = readProperties  file: './mpae-buildpipeline-groovy-scripts/tool.properties'
 					createEmailList()
 					def jsonObj = readJSON file:".main-meta/main.json"
 					def repoName, prNum, bitbucketSlug, jobName, blueOceanURL
 					def version = "${jsonObj.content.version}".trim()
-					if(version != "" || env.TAG_NAME){
+					if(env.TAG_NAME){
 						def branchPattern = ~/.*feature.*/
 						def isFeatureBranch = (env.CHANGE_BRANCH ==~ branchPattern) || (env.BRANCH_NAME ==~ branchPattern)
 						repoName = env.GIT_URL.replaceFirst(/^.*\/([^\/]+?).git$/, '$1')
@@ -56,10 +55,12 @@ pipeline {
 						}
 					}
 					if(env.TAG_NAME =~ env.SEMVER_REGEX){
-						DEPLOY_TO_PORTAL_AND_GITHUB = true 
-					}
-					if(version == env.TAG_NAME){
-						execute("echo 'Tag name is not equal to metadata content version.' && exit 1")
+						if(version == env.TAG_NAME){
+							DEPLOY_TO_PORTAL_AND_GITHUB = true 
+						}
+						else{
+							execute("echo 'Tag name is not equal to metadata content version.' && exit 1")
+						}
 					}
 					println "RUN_METADATA_STAGE: $RUN_METADATA_STAGE"
 					println "DEPLOY_TO_PORTAL_AND_GITHUB: $DEPLOY_TO_PORTAL_AND_GITHUB"
