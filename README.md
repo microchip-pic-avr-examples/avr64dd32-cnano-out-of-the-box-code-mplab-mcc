@@ -2,7 +2,9 @@
 
 [![MCHP](./images/microchip.png)](https://www.microchip.com)
 
-# Curiosity Nano Out-of-the-Box Code
+# Curiosity Nano Out-of-the-Box Code using AVR64DD32 Microcontroller with MCC Melody
+
+<br>
 
 This project comes preloaded on the Curiosity Nano board when the user first plugs it in. It consists of three programs and a command line that enables choosing between those programs. 
 
@@ -11,6 +13,8 @@ This project comes preloaded on the Curiosity Nano board when the user first plu
 - The third program sends an 8-bit counter through USART when the on-board button is pressed. This increases the counter.. 
 
 The main program is changed by sending one of the numbers 1, 2 or 3 through USART. Any other key will return the menu.  
+
+<br>
 
 ## Related Documentation
 
@@ -32,23 +36,26 @@ For more details and code examples on the AVR64DD32 click on the following links
 ## Hardware Used
 
 - AVR64DD32 Curiosity Nano Board
+<br><img src="./images/c-nano-dd.png" width="600">
+
+## Operation
+
+To program the Curiosity Nano board with this MPLAB® X project, follow the steps provided in the [How to Program the Curiosity Nano Board](#how-to-program-the-curiosity-nano-board) chapter.<br><br>
 
 ## Setup
 
 The AVR64DD32 Curiosity Nano Development Board is used as a test platform.
-
-<br><img src="./images/c-nano-dd.png" width="600">
 
 The following configurations must be made for this project:
 
  - System clock: 24 MHz
  
  The System Module MCC Configuration is presented in the picture below.
-<br><img src="./images/system_module_config.png" width="600">
+<br><img src="./images/system_module_config.png" width="800">
 
  - USART0 is configured for 115200 baud, with the receiver and transmitter enabled, 8N1 and printf support.
  
-<br><img src="./images/usart_config.png" width="600">
+<br><img src="./images/usart_config.png" width="800">
  
  - USART0 is routed to CDC pins for more flexibility, by using Port Multiplexing.
  
@@ -65,9 +72,7 @@ The initial pin configurations are presented in the table below.
 
 **Note:** Pin PF6 (Button) has pull-up enabled.
 
-## Operation
-
-To program the Curiosity Nano board with this MPLAB® X project, follow the steps provided in the [Program.md](./Program.md) page.
+[Back to Top](#curiosity-nano-out-of-the-box-code-using-avr64dd32-microcontroller-with-mcc-melody)<br><br>
 
 ## Showcases and Demo:
 
@@ -76,14 +81,14 @@ To program the Curiosity Nano board with this MPLAB® X project, follow the step
 The first program is a simple LED blinking program. The program is activated when the microcontroller is plugged in.
 To run the first project, send the command `1` through USART by using the Data Visualizer. After sending this number, the terminal will receive the following message: `"Program changed to blink LED"`.
 <br> Demo:
-<br><img src="./images/blinky_demo.gif" width="600">
+<br><img src="./images/blinky_demo.gif" width="800">
  
 ### 2. Push the button to turn on the LED
 
 The second program turns on the on-board LED by pressing the button on the Curiosity Nano board.
 To run the second project, send the command `2` through USART using Data Visualizer. After sending this number, the terminal will receive the following message: `"Program changed to press button to turn on LED"`.
 <br> Demo:
- <br><img src="./images/button_demo.gif" width="600">
+ <br><img src="./images/button_demo.gif" width="800">
 
 ### 3. Ramp on Data Visualizer
 
@@ -95,9 +100,11 @@ Follow the steps in the **How to use MPLAB® Data Visualizer** section to set up
 <br> **Note:** The next demo is at 8x speed.
 
 <br> Demo:
-<br><img src="./images/ramp_demo.gif" width="600">
+<br><img src="./images/ramp_demo.gif" width="800">
  
 **Note:** By pressing any other key, the program returns the menu through USART using the software terminal.
+
+[Back to Top](#curiosity-nano-out-of-the-box-code-using-avr64dd32-microcontroller-with-mcc-melody)<br><br>
 
 ## How to use MPLAB® Data Visualizer
 
@@ -152,6 +159,47 @@ This section illustrates how to use the MPLAB® X Data Visualizer to send comman
 
 <br><img src="./images/data_visualizer_ramp.PNG" width="1000">
 
+[Back to Top](#curiosity-nano-out-of-the-box-code-using-avr64dd32-microcontroller-with-mcc-melody)<br><br>
+
 ## Summary
 
 This project is an out-of-the-box experience for the first-time user. It showcases the basic features of the Curiosity Nano Development platform.
+
+[Back to Top](#curiosity-nano-out-of-the-box-code-using-avr64dd32-microcontroller-with-mcc-melody)<br><br>
+
+##  How to Program the Curiosity Nano board
+
+This chapter shows how to use the MPLAB® X IDE to program an AVR® device with an Example_Project.X. This can be applied for any other projects.
+
+- Connect the board to the PC.
+
+- Open the Example_Project.X project in MPLAB X IDE.
+
+- Set the Example_Project.X project as main project.
+
+  - Right click on the project in the **Projects** tab and click **Set as Main Project**.
+    <br><img src="images/Program_Set_as_Main_Project.PNG" width="600">
+
+- Clean and build the Example_Project.X project.
+
+  - Right click on the **Example_Project.X** project and select **Clean and Build**.
+    <br><img src="images/Program_Clean_and_Build.png" width="600">
+
+- Select the **AVRxxxxx Curiosity Nano** in the Connected Hardware Tool section of the project settings:
+
+  - Right click on the project and click **Properties**
+  - Click on the arrow under the Connected Hardware Tool
+  - Select the **AVRxxxxx Curiosity Nano** (click on the **SN**), click **Apply** and then click **OK**:
+    <br><img src="images/Program_Tool_Selection.png" width="600">
+
+- Program the project to the board.
+  - Right click on the project and click **Make and Program Device**.
+    <br><img src="images/Program_Make_and_Program_Device.png" width="600">
+
+<br>
+
+- [Back to  Setup](#setup)
+- [Back to Showcases and Demo](#showcases-and-demo)
+- [Back to How to use MPLAB® Data Visualizer](#how-to-use-mplab®-data-visualizer) 
+- [Back to Summary](#summary)
+- [Back to Top](#curiosity-nano-out-of-the-box-code-using-avr64dd32-microcontroller-with-mcc-melody)
