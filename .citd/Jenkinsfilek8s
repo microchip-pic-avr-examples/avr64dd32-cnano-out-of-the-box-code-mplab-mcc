@@ -36,23 +36,19 @@ pipeline {
 					def jsonObj = readJSON file:".main-meta/main.json"
 					def repoName, prNum, bitbucketSlug, jobName, blueOceanURL
 					def version = "${jsonObj.content.version}".trim()
-					if(env.TAG_NAME){
-						def branchPattern = ~/.*feature.*/
-						def isFeatureBranch = (env.CHANGE_BRANCH ==~ branchPattern) || (env.BRANCH_NAME ==~ branchPattern)
-						repoName = env.GIT_URL.replaceFirst(/^.*\/([^\/]+?).git$/, '$1')
-						prNum = env.BRANCH_NAME.replace('PR-', '')
-						bitbucketSlug = env.GIT_URL.tokenize('/')[3]
-						jobName = env.JOB_NAME.replace(' ','%20').replace("/${env.BRANCH_NAME}",'').replace('/','%2F')
-						blueOceanURL = "https://ci.devops.microchip.com/mcu8/blue/organizations/jenkins/" 
-						if(env.CHANGE_TARGET == "master"){
-							RUN_METADATA_STAGE = true
-						}
-						else if(env.CHANGE_TARGET == "develop"){
-							RUN_METADATA_STAGE = true
-						}
-						else{
-							RUN_METADATA_STAGE = false
-						}
+					repoName = env.GIT_URL.replaceFirst(/^.*\/([^\/]+?).git$/, '$1')
+					prNum = env.BRANCH_NAME.replace('PR-', '')
+					bitbucketSlug = env.GIT_URL.tokenize('/')[3]
+					jobName = env.JOB_NAME.replace(' ','%20').replace("/${env.BRANCH_NAME}",'').replace('/','%2F')
+					blueOceanURL = "https://ci.devops.microchip.com/mcu8/blue/organizations/jenkins/" 
+					if(env.CHANGE_TARGET == "master"){
+						RUN_METADATA_STAGE = true
+					}
+					else if(env.CHANGE_TARGET == "develop"){
+						RUN_METADATA_STAGE = true
+					}
+					else{
+						RUN_METADATA_STAGE = false
 					}
 					if(env.TAG_NAME =~ env.SEMVER_REGEX){
 						if(version == env.TAG_NAME){
@@ -91,7 +87,8 @@ pipeline {
 								}
 							}
 							else if(exitCode == 1){
-								error("Metadata does not follow schema, please follow schema defined in https://confluence.microchip.com/display/MCA/QA_Doc+-+Metadata+Schema+3.0.0#QA_DocMetadataSchema3.0.0-Stepstomanuallymigratetometadataschema(v1.3.0)")
+								println("Metadata does not follow schema, please follow schema defined in https://confluence.microchip.com/display/MCA/QA_Doc+-+Metadata+Schema+3.0.0#QA_DocMetadataSchema3.0.0-Stepstomanuallymigratetometadataschema(v1.3.0)")
+								execute("cd tool-metadata-validator && python metadata-validator.py -data ../.main-meta/main.json -schema ../metadata-schema/main-schema.json")																													  
 							}
 
 							def githubObj = getGiHubInfo()
@@ -157,9 +154,12 @@ pipeline {
 					execute("chmod +x ./tool-github-deploy/tool-github-deploy/tool-github-deploy.py")  
 							
 					withCredentials([usernamePassword(credentialsId: '8bit-examples.github.com', usernameVariable: 'USER_NAME', passwordVariable:'USER_PASS' )]) {					
-						execute("python ./tool-github-deploy/tool-github-deploy/tool-github-deploy.py -deploy=true -gpat=${USER_PASS} -dgid=${USER_NAME} -dburl=${env.BITBUCKET_URL} -dgurl=${env.GITHUB_URL} -dtag=${env.TAG_NAME} -dmfd=true -digmc=true")	
-						execute("cd ./C-Nano-Out-of-the-Box.X/dist/pro/production && mv C-Nano-Out-of-the-Box.X.production.hex C-Nano-Out-of-the-Box-${env.TAG_NAME}.hex")
-						execute("python ./tool-github-deploy/tool-github-deploy/tool-github-deploy.py -rlo=true -gpat=${USER_PASS}  -rpn=${githubObj.repoName} -rltv=${env.TAG_NAME} -rltt=${env.TAG_NAME} -rlua=./C-Nano-Out-of-the-Box.X/dist/pro/production/C-Nano-Out-of-the-Box-${env.TAG_NAME}.hex")	
+						execute("python ./tool-github-deploy/tool-github-deploy/tool-github-deploy.py -deploy=true -gpat=${USER_PASS} -dgid=${USER_NAME} -dburl=${env.BITBUCKET_URL} -dgurl=${env.GITHUB_URL} -dtag=${env.TAG_NAME} -dmfd=true -digmc=true")						
+						download("tool-zip-hex-file","1.2.0")
+						execute("pip install xmltodict")
+						execute("cp ./tool-zip-hex-file/zip-hex.py ./")
+						execute("python zip-hex.py --tagName ${env.TAG_NAME}")
+						execute("python ./tool-github-deploy/tool-github-deploy/tool-github-deploy.py -rlo=true -gpat=${USER_PASS}  -rpn=${githubObj.repoName} -rltv=${env.TAG_NAME} -rltt=${env.TAG_NAME} -rlua=./hex-files.zip")		
 					}
 					sendSuccessfulGithubDeploymentEmail()
 				}
@@ -257,7 +257,7 @@ def createEmailList(){
     execute("python3 -m pip install jira")
 	//def tool_version = readProperties  file: './mpae-buildpipeline-groovy-scripts/tool.properties'
 	download("tool-get-email-address","1.2.0")
-	withCredentials([usernamePassword(credentialsId: 'Jira acess Credentials', usernameVariable: 'JiraID', passwordVariable:'JiraPassword' )]) {					
+	withCredentials([usernamePassword(credentialsId: 'Jira-acess-Credentials', usernameVariable: 'JiraID', passwordVariable:'JiraPassword' )]) {					
 		execute("cd tool-get-email-address && python3 emailAddressFromJira.py -id ${JiraID} -tkn ${JiraPassword}")
 	}
 	env.JIRAEMAIL = readFile('email.txt')
